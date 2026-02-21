@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cdw-medcp"
+version = "0.1.0"
+description = "An MCP server for querying a de-identified Epic Caboodle Clinical Data Warehouse"
+readme = "README.md"
+license = {text = "MIT"}
+keywords = [
+    "mcp", "clinical", "ehr", "sql-server", "healthcare",
+    "clinical-informatics", "epic", "caboodle"
+]
+dependencies = [
+    "fastmcp>=2.11.2",
+    "pydantic>=2.11.7",
+    "pymssql>=2.3.7",
+    "openpyxl>=3.1.0",
+]
+requires-python = ">=3.11"
+
+scripts.cdw-medcp = "cdw_medcp.cli:main"
