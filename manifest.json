@@ -4,6 +4,9 @@
   "version": "0.1.0",
   "description": "Clinical Data Warehouse MCP Server for Claude Desktop",
   "long_description": "CDW_MedCP connects Claude Desktop to a de-identified Epic Caboodle Clinical Data Warehouse via SQL Server. It provides schema discovery, clinical queries, notes investigation, data export, concept mapping, and data summarization — all read-only. Designed for clinical researchers who need natural language access to EHR data.",
+  "author": {
+    "name": "Gianmarco Bellucci"
+  },
   "icon": "logo.png",
   "server": {
     "type": "python",
