@@ -1,0 +1,18 @@
+"""CDW_MedCP configuration models"""
+
+from pydantic import BaseModel, Field
+
+
+class ClinicalDBConfig(BaseModel):
+    """Clinical Data Warehouse database configuration (SQL Server)"""
+    server: str = Field(..., description="CDW database server host")
+    database: str = Field(..., description="CDW database name")
+    username: str = Field(..., description="CDW database username")
+    password: str = Field(..., description="CDW database password")
+
+
+class CDWConfig(BaseModel):
+    """Complete CDW_MedCP server configuration"""
+    clinical_db: ClinicalDBConfig = Field(..., description="Clinical Data Warehouse configuration")
+    namespace: str = Field("CDW", description="Tool namespace prefix")
+    log_level: str = Field("INFO", description="Logging level")
