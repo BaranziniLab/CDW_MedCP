@@ -1,0 +1,100 @@
+{
+  "manifest_version": "0.2",
+  "name": "CDW_MedCP",
+  "version": "0.1.0",
+  "description": "Clinical Data Warehouse MCP Server for Claude Desktop",
+  "long_description": "CDW_MedCP connects Claude Desktop to a de-identified Epic Caboodle Clinical Data Warehouse via SQL Server. It provides schema discovery, clinical queries, notes investigation, data export, concept mapping, and data summarization — all read-only. Designed for clinical researchers who need natural language access to EHR data.",
+  "icon": "logo.png",
+  "server": {
+    "type": "python",
+    "entry_point": "server/main.py",
+    "mcp_config": {
+      "command": "${__dirname}/.python/bin/python3.12",
+      "args": ["${__dirname}/server/main.py"],
+      "env": {
+        "CDW_LOG_LEVEL": "${user_config.CDW_LOG_LEVEL}",
+        "CDW_NAMESPACE": "${user_config.CDW_NAMESPACE}",
+        "CLINICAL_RECORDS_SERVER": "${user_config.CLINICAL_RECORDS_SERVER}",
+        "CLINICAL_RECORDS_DATABASE": "${user_config.CLINICAL_RECORDS_DATABASE}",
+        "CLINICAL_RECORDS_USERNAME": "${user_config.CLINICAL_RECORDS_USERNAME}",
+        "CLINICAL_RECORDS_PASSWORD": "${user_config.CLINICAL_RECORDS_PASSWORD}"
+      }
+    }
+  },
+  "tools": [
+    {"name": "get_database_overview", "description": "Get an overview of all tables in the CDW with descriptions"},
+    {"name": "describe_table", "description": "Get detailed column info for a specific table"},
+    {"name": "search_schema", "description": "Search table/column names and descriptions by keyword"},
+    {"name": "query", "description": "Execute a read-only SQL query on the CDW"},
+    {"name": "get_patient_demographics", "description": "Get demographics for a patient"},
+    {"name": "get_encounters", "description": "Get encounter history for a patient"},
+    {"name": "get_medications", "description": "Get medication records for a patient"},
+    {"name": "get_diagnoses", "description": "Get diagnosis history for a patient"},
+    {"name": "get_labs", "description": "Get lab results for a patient"},
+    {"name": "search_notes", "description": "Search clinical notes by keyword"},
+    {"name": "get_note", "description": "Retrieve full text of a clinical note"},
+    {"name": "export_query_to_csv", "description": "Export query results to a CSV file"},
+    {"name": "search_diagnoses_by_code", "description": "Search diagnoses by ICD/SNOMED code or name"},
+    {"name": "search_medications_by_code", "description": "Search medications by code or name"},
+    {"name": "search_procedures_by_code", "description": "Search procedures by CPT/HCPCS code or name"},
+    {"name": "summarize_table", "description": "Get summary statistics for a table"},
+    {"name": "cohort_summary", "description": "Get aggregate stats for a filtered cohort"}
+  ],
+  "prompts": [
+    {"name": "clinical_data_exploration", "description": "Guided CDW exploration workflow", "text": "I want to explore clinical data in the CDW. Please start by showing me the database overview."},
+    {"name": "cohort_building", "description": "Step-by-step cohort identification", "text": "I need to build a patient cohort for research. What condition should we use?"},
+    {"name": "notes_analysis", "description": "Clinical notes investigation", "text": "I want to investigate clinical notes. What patient or keyword should we search?"}
+  ],
+  "user_config": {
+    "CLINICAL_RECORDS_SERVER": {
+      "type": "string",
+      "title": "CDW Server",
+      "description": "SQL Server host for the Clinical Data Warehouse",
+      "required": true,
+      "sensitive": false
+    },
+    "CLINICAL_RECORDS_DATABASE": {
+      "type": "string",
+      "title": "CDW Database",
+      "description": "Database name for the Clinical Data Warehouse",
+      "required": true,
+      "sensitive": false
+    },
+    "CLINICAL_RECORDS_USERNAME": {
+      "type": "string",
+      "title": "CDW Username",
+      "description": "Username for the CDW SQL Server",
+      "required": true,
+      "sensitive": false
+    },
+    "CLINICAL_RECORDS_PASSWORD": {
+      "type": "string",
+      "title": "CDW Password",
+      "description": "Password for the CDW SQL Server",
+      "required": true,
+      "sensitive": true
+    },
+    "CDW_NAMESPACE": {
+      "type": "string",
+      "title": "Tool Namespace",
+      "description": "Prefix for all CDW_MedCP tool names",
+      "required": false,
+      "default": "CDW",
+      "sensitive": false
+    },
+    "CDW_LOG_LEVEL": {
+      "type": "string",
+      "title": "Log Level",
+      "description": "Logging level (DEBUG, INFO, WARNING, ERROR)",
+      "required": false,
+      "default": "INFO",
+      "sensitive": false
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {"node": ">=18.0.0"}
+  },
+  "keywords": ["Clinical", "Healthcare", "EHR", "Epic", "Caboodle", "SQL Server", "CDW", "MCP"],
+  "license": "MIT"
+}
