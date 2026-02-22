@@ -15,7 +15,13 @@ class ClinicalQueryValidator:
     """Clinical record query validator for read-only operations"""
 
     @staticmethod
+    def _strip_comments(query: str) -> str:
+        """Remove SQL single-line comments (--) before validation"""
+        return re.sub(r'--[^\n]*', '', query)
+
+    @staticmethod
     def is_read_only_clinical_query(query: str) -> bool:
+        query = ClinicalQueryValidator._strip_comments(query)
         clean_query = query.strip().upper()
         allowed_statements = ['SELECT', 'WITH', 'DECLARE']
         if not any(clean_query.startswith(stmt) for stmt in allowed_statements):

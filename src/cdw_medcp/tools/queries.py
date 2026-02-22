@@ -58,9 +58,16 @@ def register_query_tools(mcp: FastMCP, namespace_prefix: str, clinical_config: C
         row_limit: int = Field(DEFAULT_ROW_LIMIT, description="Maximum rows to return (default 1000)")
     ) -> ToolResult:
         """Execute a READ-ONLY SQL query on the Clinical Data Warehouse.
-        Only SELECT, WITH, and DECLARE statements are allowed.
+        Only SELECT, WITH, and DECLARE statements are allowed. SQL comments (--) are supported.
         Results are returned as CSV. Use get_database_overview and describe_table first
-        to understand the schema before writing queries."""
+        to understand the schema before writing queries.
+
+        IMPORTANT notes:
+        - Columns ending in *KeyValue (e.g., DateKeyValue) may not exist. Use *Key columns instead (integer YYYYMMDD format).
+        - PatientDim is SCD Type 2: use IsCurrent=1 or ORDER BY StartDate DESC for current data.
+        - LabComponentResultFact: use Value (string) for results, not NumericValue (de-identified). No TextValue/ReferenceLow/ReferenceHigh columns exist.
+        - LabComponentDim: LOINC column is LoincCode, not Loinc.
+        - Date keys are integers in YYYYMMDD format (e.g., 20230115 = Jan 15, 2023)."""
         result = _execute_readonly_query(clinical_config, sql_query, row_limit)
         return ToolResult(content=[TextContent(type="text", text=result)])
 
@@ -77,8 +84,14 @@ def register_query_tools(mcp: FastMCP, namespace_prefix: str, clinical_config: C
     def get_patient_demographics(
         patient_key: str = Field(..., description="The PatientKey (surrogate ID) to look up")
     ) -> ToolResult:
-        """Retrieve demographic information for a patient from PatientDim."""
-        sql = f"SELECT * FROM PatientDim WHERE PatientKey = '{patient_key}'"
+        """Retrieve demographic information for a patient from PatientDim.
+        Returns the most recent record (PatientDim is SCD Type 2 — multiple historical rows per patient).
+        Tries IsCurrent=1 first, falls back to most recent StartDate."""
+        sql = (
+            f"SELECT TOP 1 * FROM PatientDim "
+            f"WHERE PatientKey = '{patient_key}' "
+            f"ORDER BY CASE WHEN IsCurrent = 1 THEN 0 ELSE 1 END, StartDate DESC"
+        )
         result = _execute_readonly_query(clinical_config, sql)
         return ToolResult(content=[TextContent(type="text", text=result)])
 

@@ -62,6 +62,28 @@ def register_schema_tools(mcp: FastMCP, namespace_prefix: str):
             overview.append(entry)
         return ToolResult(content=[TextContent(type="text", text=json.dumps(overview, indent=2))])
 
+    # Data quality notes for specific tables, surfaced in describe_table
+    TABLE_NOTES = {
+        "PatientDim": (
+            "SCD Type 2 table: multiple historical rows per patient. "
+            "Use IsCurrent=1 for current record, or ORDER BY StartDate DESC for most recent. "
+            "Some patients may not have IsCurrent=1; always fall back to MAX(StartDate)."
+        ),
+        "LabComponentResultFact": (
+            "NumericValue is de-identified (contains 'DEID'). Use the Value column (string) "
+            "for actual numeric results. ReferenceValues is a combined string (e.g., 'Low: 10 High: 61'). "
+            "Use Flag and Abnormal columns for abnormality indicators. "
+            "There is no TextValue, ReferenceLow, ReferenceHigh, or AbnormalFlag column."
+        ),
+        "LabComponentDim": (
+            "The LOINC code column is named LoincCode (not Loinc)."
+        ),
+        "MedicationDim": (
+            "Pre-Epic legacy records show *Unspecified for GenericName, TherapeuticClass, "
+            "Strength, Form. Only Name (e.g., 'COPAXONE') is reliable for those records."
+        ),
+    }
+
     @mcp.tool(
         name=f"{namespace_prefix}describe_table",
         annotations=ToolAnnotations(
@@ -74,7 +96,9 @@ def register_schema_tools(mcp: FastMCP, namespace_prefix: str):
     )
     def describe_table(table_name: str) -> ToolResult:
         """Get detailed column information for a specific table including column names,
-        data types, descriptions, and foreign key relationships (lookup tables)."""
+        data types, descriptions, and foreign key relationships (lookup tables).
+        Columns marked queryable=false may not exist in the SQL view — use the
+        corresponding base column instead (e.g., DateKey instead of DateKeyValue)."""
         schema = _get_schema_ref()
         if table_name not in schema:
             matches = [k for k in schema if k.lower() == table_name.lower()]
@@ -91,6 +115,9 @@ def register_schema_tools(mcp: FastMCP, namespace_prefix: str):
             "encounter_key_column": info.get("encounter_key_column"),
             "columns": info.get("columns", []),
         }
+        # Add data quality notes if available
+        if table_name in TABLE_NOTES:
+            result["data_notes"] = TABLE_NOTES[table_name]
         return ToolResult(content=[TextContent(type="text", text=json.dumps(result, indent=2))])
 
     @mcp.tool(
@@ -118,11 +145,15 @@ def register_schema_tools(mcp: FastMCP, namespace_prefix: str):
                 col_name = col.get("name", "")
                 col_desc = col.get("description", "") or ""
                 if keyword_lower in col_name.lower() or keyword_lower in col_desc.lower():
-                    matching_columns.append({
+                    col_entry = {
                         "column_name": col_name,
                         "description": col_desc,
                         "data_type": col.get("data_type"),
-                    })
+                    }
+                    if col.get("queryable") is False:
+                        col_entry["queryable"] = False
+                        col_entry["note"] = col.get("note", "")
+                    matching_columns.append(col_entry)
 
             if table_match or matching_columns:
                 entry = {

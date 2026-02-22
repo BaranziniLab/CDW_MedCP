@@ -52,14 +52,16 @@ def register_concept_tools(mcp: FastMCP, namespace_prefix: str, clinical_config:
         search_term: str = Field(..., description="ICD/SNOMED code or diagnosis name to search for"),
         row_limit: int = Field(50, description="Maximum results to return")
     ) -> ToolResult:
-        """Search DiagnosisTerminologyDim for diagnoses matching a code or name.
+        """Search diagnoses matching a code or name.
+        Joins DiagnosisTerminologyDim (codes) with DiagnosisDim (names).
         Returns diagnosis keys, names, codes, and terminology types (ICD-9, ICD-10, SNOMED, etc.)."""
         sql = (
             f"SELECT TOP {row_limit} dt.DiagnosisTerminologyKey, dt.DiagnosisKey, "
-            f"dt.Type, dt.Value, dt.DisplayString, dt.DiagnosisName "
+            f"dt.Type, dt.Value, dt.DisplayString, dd.Name AS DiagnosisName "
             f"FROM DiagnosisTerminologyDim dt "
+            f"JOIN DiagnosisDim dd ON dt.DiagnosisKey = dd.DiagnosisKey "
             f"WHERE dt.Value LIKE '%{search_term}%' OR dt.DisplayString LIKE '%{search_term}%' "
-            f"OR dt.DiagnosisName LIKE '%{search_term}%'"
+            f"OR dd.Name LIKE '%{search_term}%'"
         )
         result = _run_query(clinical_config, sql)
         return ToolResult(content=[TextContent(type="text", text=result)])

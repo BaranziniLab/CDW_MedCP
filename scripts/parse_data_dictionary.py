@@ -40,12 +40,18 @@ def parse_data_dictionary(xlsx_path: str, output_path: str):
             continue
         if table_name not in columns_by_table:
             columns_by_table[table_name] = []
+        col_name = record.get("column_name", "")
         col_info = {
-            "name": record.get("column_name"),
+            "name": col_name,
             "description": record.get("column_description", ""),
             "data_type": record.get("data_type"),
             "ordinal_position": record.get("ordinal_position"),
         }
+        # Flag columns that may not be directly queryable in SQL
+        # *KeyValue columns are computed/denormalized and often don't exist in views
+        if col_name and col_name.endswith("KeyValue"):
+            col_info["queryable"] = False
+            col_info["note"] = "Computed column — may not exist in SQL view. Use the corresponding *Key column (integer YYYYMMDD format) instead."
         lookup = record.get("lookupTableName")
         if lookup:
             col_info["lookup_table"] = lookup
