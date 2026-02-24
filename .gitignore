@@ -18,3 +18,9 @@ build/
 
 # Bundled runtime (for MCPB)
 .python/
+
+# MedCP template (reference only, not part of this project)
+MedCP/
+
+# Claude local settings
+.claude/settings.local.json

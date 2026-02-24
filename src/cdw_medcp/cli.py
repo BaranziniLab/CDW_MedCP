@@ -21,6 +21,7 @@ def main() -> None:
         clinical_records_username=os.getenv("CLINICAL_RECORDS_USERNAME"),
         clinical_records_password=os.getenv("CLINICAL_RECORDS_PASSWORD"),
         namespace=os.getenv("CDW_NAMESPACE", "CDW"),
+        schema=os.getenv("CDW_SCHEMA", "deid_uf"),
         log_level=log_level,
     )
 

@@ -35,7 +35,7 @@ def _query_to_csv(config: ClinicalDBConfig, sql: str) -> str:
     return "\n".join(csv_lines)
 
 
-def register_notes_tools(mcp: FastMCP, namespace_prefix: str, clinical_config: ClinicalDBConfig):
+def register_notes_tools(mcp: FastMCP, namespace_prefix: str, clinical_config: ClinicalDBConfig, schema: str = "deid_uf"):
     """Register clinical notes tools"""
 
     @mcp.tool(
@@ -54,13 +54,17 @@ def register_notes_tools(mcp: FastMCP, namespace_prefix: str, clinical_config: C
         row_limit: int = Field(50, description="Maximum notes to return (default 50)")
     ) -> ToolResult:
         """Search clinical notes for a patient by keyword. Returns matching note metadata
-        and text snippets. Use get_note() to retrieve the full text of a specific note."""
+        and text snippets. Use get_note() to retrieve the full text of a specific note.
+
+        IMPORTANT: Notes use PatientDurableKey (not PatientKey). To find a patient's
+        PatientDurableKey, query PatientDim first: SELECT PatientDurableKey FROM deid_uf.PatientDim
+        WHERE PatientKey = '...' AND IsCurrent = 1."""
         sql = (
             f"SELECT TOP {row_limit} nm.deid_note_key, nm.note_type, nm.encounter_type, "
             f"nm.enc_dept_specialty, nm.deid_service_date, "
             f"SUBSTRING(nt.note_text, 1, 500) AS note_snippet "
-            f"FROM note_metadata nm "
-            f"JOIN note_text nt ON nm.deid_note_key = nt.deid_note_key "
+            f"FROM {schema}.note_metadata nm "
+            f"JOIN {schema}.note_text nt ON nm.deid_note_key = nt.deid_note_key "
             f"WHERE nm.PatientDurableKey = '{patient_durable_key}' "
             f"AND nt.note_text LIKE '%{keyword}%' "
             f"ORDER BY nm.deid_service_date DESC"
@@ -85,8 +89,8 @@ def register_notes_tools(mcp: FastMCP, namespace_prefix: str, clinical_config: C
         sql = (
             f"SELECT nm.deid_note_key, nm.note_type, nm.encounter_type, "
             f"nm.enc_dept_specialty, nm.deid_service_date, nt.note_text "
-            f"FROM note_metadata nm "
-            f"JOIN note_text nt ON nm.deid_note_key = nt.deid_note_key "
+            f"FROM {schema}.note_metadata nm "
+            f"JOIN {schema}.note_text nt ON nm.deid_note_key = nt.deid_note_key "
             f"WHERE nm.deid_note_key = '{note_key}'"
         )
         result = _query_to_csv(clinical_config, sql)

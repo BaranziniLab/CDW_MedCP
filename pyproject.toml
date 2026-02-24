@@ -8,6 +8,10 @@ version = "0.1.0"
 description = "An MCP server for querying a de-identified Epic Caboodle Clinical Data Warehouse"
 readme = "README.md"
 license = {text = "MIT"}
+authors = [
+    {name = "Gianmarco Bellucci"},
+    {name = "Wanjun Gu"},
+]
 keywords = [
     "mcp", "clinical", "ehr", "sql-server", "healthcare",
     "clinical-informatics", "epic", "caboodle"

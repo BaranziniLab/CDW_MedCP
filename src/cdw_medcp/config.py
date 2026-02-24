@@ -15,4 +15,5 @@ class CDWConfig(BaseModel):
     """Complete CDW_MedCP server configuration"""
     clinical_db: ClinicalDBConfig = Field(..., description="Clinical Data Warehouse configuration")
     namespace: str = Field("CDW", description="Tool namespace prefix")
+    db_schema: str = Field("deid_uf", description="Database schema for table qualification (e.g., deid or deid_uf)")
     log_level: str = Field("INFO", description="Logging level")

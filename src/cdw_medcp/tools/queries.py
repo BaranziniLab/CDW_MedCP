@@ -40,7 +40,7 @@ def _execute_readonly_query(config: ClinicalDBConfig, sql: str, row_limit: int =
     return "\n".join(csv_lines)
 
 
-def register_query_tools(mcp: FastMCP, namespace_prefix: str, clinical_config: ClinicalDBConfig):
+def register_query_tools(mcp: FastMCP, namespace_prefix: str, clinical_config: ClinicalDBConfig, schema: str = "deid_uf"):
     """Register SQL execution and canned query tools"""
 
     @mcp.tool(
@@ -62,12 +62,40 @@ def register_query_tools(mcp: FastMCP, namespace_prefix: str, clinical_config: C
         Results are returned as CSV. Use get_database_overview and describe_table first
         to understand the schema before writing queries.
 
-        IMPORTANT notes:
-        - Columns ending in *KeyValue (e.g., DateKeyValue) may not exist. Use *Key columns instead (integer YYYYMMDD format).
+        IMPORTANT — COLUMN NAMES:
+        - PatientDim: PatientKey, PatientDurableKey, Sex, BirthDate, DeathDate, FirstRace, Ethnicity,
+          PreferredLanguage, MaritalStatus, SmokingStatus, IsCurrent, Status, StartDate
+        - EncounterFact: Type (NOT EncounterType), DepartmentName, DepartmentSpecialty, DateKey, PatientClass, VisitType
+        - LabComponentResultFact: use Value (string) for results, NOT NumericValue (de-identified).
+          No TextValue/ReferenceLow/ReferenceHigh columns. Use ReferenceValues, Flag, Abnormal.
+        - LabComponentDim: LOINC column is LoincCode (not Loinc)
+        - Columns ending in *KeyValue (e.g., DateKeyValue) do NOT exist. Use *Key (integer YYYYMMDD).
         - PatientDim is SCD Type 2: use IsCurrent=1 or ORDER BY StartDate DESC for current data.
-        - LabComponentResultFact: use Value (string) for results, not NumericValue (de-identified). No TextValue/ReferenceLow/ReferenceHigh columns exist.
-        - LabComponentDim: LOINC column is LoincCode, not Loinc.
-        - Date keys are integers in YYYYMMDD format (e.g., 20230115 = Jan 15, 2023)."""
+        - All tables must be schema-qualified (e.g., deid_uf.PatientDim)
+
+        PATIENT IDENTIFIERS:
+        - PatientKey is an SCD Type 2 SURROGATE key — it changes when demographics update.
+          Fact tables stamp the PatientKey active at event time, so old keys become IsCurrent=0.
+        - PatientDurableKey is the STABLE patient identifier across all table versions.
+        - ALWAYS use PatientDurableKey (not PatientKey) to join fact tables to PatientDim.
+        - For cohort queries: SELECT DISTINCT PatientDurableKey FROM fact_table, then
+          join to PatientDim WHERE IsCurrent=1 AND PatientDurableKey IN (...)
+
+        DATE HANDLING:
+        - Date columns (*DateKey, *DateKey) are YYYYMMDD integers (e.g., 20240115)
+        - Convert to DATE: CONVERT(DATE, CAST(DateKey AS VARCHAR(8)), 112)
+        - Filter invalid dates: WHERE DateKey > 19000101
+        - Treatment duration: use StartDateKey/EndDateKey span (not just OrderedDateKey)
+
+        PERFORMANCE TIPS:
+        - NEVER JOIN PatientDim directly to fact tables — causes timeouts on this CDW
+        - Use WHERE PatientDurableKey IN (subquery) pattern instead
+        - Use SELECT DISTINCT TOP N (not SELECT TOP N DISTINCT)
+        - CTE + JOIN patterns also timeout — use subqueries instead
+        - Multi-fact queries (e.g., diagnosis + medication): use a 2-step approach.
+          First query concept tools to get key values, then use hardcoded IN (...) lists
+          instead of nested subqueries across multiple fact tables.
+        - note_metadata/note_text use PatientDurableKey (not PatientKey)"""
         result = _execute_readonly_query(clinical_config, sql_query, row_limit)
         return ToolResult(content=[TextContent(type="text", text=result)])
 
@@ -82,14 +110,21 @@ def register_query_tools(mcp: FastMCP, namespace_prefix: str, clinical_config: C
         )
     )
     def get_patient_demographics(
-        patient_key: str = Field(..., description="The PatientKey (surrogate ID) to look up")
+        patient_id: str = Field(..., description="PatientDurableKey (preferred, stable) or PatientKey (SCD surrogate). Use PatientDurableKey when available.")
     ) -> ToolResult:
         """Retrieve demographic information for a patient from PatientDim.
-        Returns the most recent record (PatientDim is SCD Type 2 — multiple historical rows per patient).
-        Tries IsCurrent=1 first, falls back to most recent StartDate."""
+        Returns the most recent record (IsCurrent=1).
+
+        IMPORTANT: PatientDurableKey is the stable patient identifier. PatientKey is an
+        SCD Type 2 surrogate that changes when demographics update. Always prefer PatientDurableKey.
+
+        Key columns: PatientKey, PatientDurableKey, Sex, BirthDate, DeathDate,
+        FirstRace, Ethnicity, PreferredLanguage, MaritalStatus, SmokingStatus, IsCurrent, Status."""
+        # Auto-detect: if it looks like a PatientDurableKey (appears in both PatientKey and PatientDurableKey),
+        # query by PatientDurableKey for reliable matching
         sql = (
-            f"SELECT TOP 1 * FROM PatientDim "
-            f"WHERE PatientKey = '{patient_key}' "
+            f"SELECT TOP 1 * FROM {schema}.PatientDim "
+            f"WHERE (PatientDurableKey = '{patient_id}' OR PatientKey = '{patient_id}') "
             f"ORDER BY CASE WHEN IsCurrent = 1 THEN 0 ELSE 1 END, StartDate DESC"
         )
         result = _execute_readonly_query(clinical_config, sql)
@@ -106,11 +141,17 @@ def register_query_tools(mcp: FastMCP, namespace_prefix: str, clinical_config: C
         )
     )
     def get_encounters(
-        patient_key: str = Field(..., description="The PatientKey to look up"),
+        patient_id: str = Field(..., description="PatientDurableKey (preferred) or PatientKey"),
         row_limit: int = Field(DEFAULT_ROW_LIMIT, description="Maximum rows to return")
     ) -> ToolResult:
-        """Retrieve encounter history for a patient from EncounterFact."""
-        sql = f"SELECT TOP {row_limit} * FROM EncounterFact WHERE PatientKey = '{patient_key}' ORDER BY DateKey DESC"
+        """Retrieve encounter history for a patient from EncounterFact.
+
+        IMPORTANT: Use PatientDurableKey (stable) rather than PatientKey (SCD surrogate).
+        Key columns: EncounterKey, PatientKey, PatientDurableKey, DateKey, Type (not EncounterType),
+        DepartmentName, DepartmentSpecialty, PatientClass, VisitType."""
+        sql = (f"SELECT TOP {row_limit} * FROM {schema}.EncounterFact "
+               f"WHERE PatientDurableKey = '{patient_id}' OR PatientKey = '{patient_id}' "
+               f"ORDER BY DateKey DESC")
         result = _execute_readonly_query(clinical_config, sql, row_limit)
         return ToolResult(content=[TextContent(type="text", text=result)])
 
@@ -125,11 +166,17 @@ def register_query_tools(mcp: FastMCP, namespace_prefix: str, clinical_config: C
         )
     )
     def get_medications(
-        patient_key: str = Field(..., description="The PatientKey to look up"),
+        patient_id: str = Field(..., description="PatientDurableKey (preferred) or PatientKey"),
         row_limit: int = Field(DEFAULT_ROW_LIMIT, description="Maximum rows to return")
     ) -> ToolResult:
-        """Retrieve medication order records for a patient from MedicationOrderFact."""
-        sql = f"SELECT TOP {row_limit} * FROM MedicationOrderFact WHERE PatientKey = '{patient_key}' ORDER BY OrderedDateKey DESC"
+        """Retrieve medication order records for a patient from MedicationOrderFact.
+
+        IMPORTANT: Use PatientDurableKey (stable) rather than PatientKey (SCD surrogate).
+        Treatment duration: use StartDateKey/EndDateKey span, not just OrderedDateKey.
+        Filter invalid dates: WHERE DateKey > 19000101."""
+        sql = (f"SELECT TOP {row_limit} * FROM {schema}.MedicationOrderFact "
+               f"WHERE PatientDurableKey = '{patient_id}' OR PatientKey = '{patient_id}' "
+               f"ORDER BY OrderedDateKey DESC")
         result = _execute_readonly_query(clinical_config, sql, row_limit)
         return ToolResult(content=[TextContent(type="text", text=result)])
 
@@ -144,11 +191,15 @@ def register_query_tools(mcp: FastMCP, namespace_prefix: str, clinical_config: C
         )
     )
     def get_diagnoses(
-        patient_key: str = Field(..., description="The PatientKey to look up"),
+        patient_id: str = Field(..., description="PatientDurableKey (preferred) or PatientKey"),
         row_limit: int = Field(DEFAULT_ROW_LIMIT, description="Maximum rows to return")
     ) -> ToolResult:
-        """Retrieve diagnosis history for a patient from DiagnosisEventFact."""
-        sql = f"SELECT TOP {row_limit} * FROM DiagnosisEventFact WHERE PatientKey = '{patient_key}' ORDER BY StartDateKey DESC"
+        """Retrieve diagnosis history for a patient from DiagnosisEventFact.
+
+        IMPORTANT: Use PatientDurableKey (stable) rather than PatientKey (SCD surrogate)."""
+        sql = (f"SELECT TOP {row_limit} * FROM {schema}.DiagnosisEventFact "
+               f"WHERE PatientDurableKey = '{patient_id}' OR PatientKey = '{patient_id}' "
+               f"ORDER BY StartDateKey DESC")
         result = _execute_readonly_query(clinical_config, sql, row_limit)
         return ToolResult(content=[TextContent(type="text", text=result)])
 
@@ -163,10 +214,16 @@ def register_query_tools(mcp: FastMCP, namespace_prefix: str, clinical_config: C
         )
     )
     def get_labs(
-        patient_key: str = Field(..., description="The PatientKey to look up"),
+        patient_id: str = Field(..., description="PatientDurableKey (preferred) or PatientKey"),
         row_limit: int = Field(DEFAULT_ROW_LIMIT, description="Maximum rows to return")
     ) -> ToolResult:
-        """Retrieve lab component results for a patient from LabComponentResultFact."""
-        sql = f"SELECT TOP {row_limit} * FROM LabComponentResultFact WHERE PatientKey = '{patient_key}' ORDER BY ResultDateKey DESC"
+        """Retrieve lab component results for a patient from LabComponentResultFact.
+
+        IMPORTANT: Use PatientDurableKey (stable) rather than PatientKey (SCD surrogate).
+        Key columns: Value (string result — use this, not NumericValue which is DEID'd),
+        ReferenceValues (combined string), Flag, Abnormal, ResultDateKey (YYYYMMDD int)."""
+        sql = (f"SELECT TOP {row_limit} * FROM {schema}.LabComponentResultFact "
+               f"WHERE PatientDurableKey = '{patient_id}' OR PatientKey = '{patient_id}' "
+               f"ORDER BY ResultDateKey DESC")
         result = _execute_readonly_query(clinical_config, sql, row_limit)
         return ToolResult(content=[TextContent(type="text", text=result)])

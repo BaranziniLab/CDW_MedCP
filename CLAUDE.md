@@ -84,6 +84,7 @@ The data dictionary (`deid_uf_data_dictionary.xlsx`, 139 tables, ~5000 columns) 
 All config via environment variables (see `.env.example`):
 - `CLINICAL_RECORDS_SERVER`, `CLINICAL_RECORDS_DATABASE`, `CLINICAL_RECORDS_USERNAME`, `CLINICAL_RECORDS_PASSWORD`
 - `CDW_NAMESPACE` (tool name prefix, default "CDW")
+- `CDW_SCHEMA` (database schema for table qualification, default "deid_uf")
 - `CDW_LOG_LEVEL`
 
 ### 17 MCP Tools (namespace-prefixed with `CDW-`)
@@ -97,12 +98,36 @@ All config via environment variables (see `.env.example`):
 | concepts.py | `search_diagnoses_by_code`, `search_medications_by_code`, `search_procedures_by_code` |
 | stats.py | `summarize_table`, `cohort_summary` |
 
-### Key Tables (from schema reference)
+### Key Tables (schema-qualified with `deid_uf.`)
 
-- **PatientDim** — patient demographics (key: `PatientKey`)
-- **EncounterFact** — encounters (keys: `PatientKey`, `EncounterKey`, order by `DateKey`)
-- **MedicationOrderFact** — medication orders (order by `OrderedDateKey`)
-- **DiagnosisEventFact** — diagnoses (order by `StartDateKey`)
-- **LabComponentResultFact** — lab results (order by `ResultDateKey`)
-- **note_metadata** / **note_text** — clinical notes (join on `deid_note_key`, patient via `PatientDurableKey`)
+- **PatientDim** — patient demographics. SCD Type 2: use `IsCurrent=1`. **PatientDurableKey** is the STABLE identifier; PatientKey is a surrogate that changes when demographics update.
+- **EncounterFact** — encounters (order by `DateKey`). Columns: `Type` (NOT EncounterType), DepartmentName, DepartmentSpecialty, PatientDurableKey
+- **MedicationOrderFact** — medication orders. Has OrderedDateKey, StartDateKey, EndDateKey, PatientDurableKey. Use StartDateKey/EndDateKey for treatment duration.
+- **DiagnosisEventFact** — diagnoses (order by `StartDateKey`). Has PatientDurableKey.
+- **LabComponentResultFact** — lab results (order by `ResultDateKey`). Use `Value` (string) for results, NOT `NumericValue` (DEID'd). Has PatientDurableKey.
+- **note_metadata** / **note_text** — clinical notes (join on `deid_note_key`, patient via `PatientDurableKey`). Filter by `enc_dept_specialty` for department.
 - **DiagnosisTerminologyDim**, **MedicationCodeDim**, **ProcedureTerminologyDim** — vocabulary/code lookups
+
+### Patient Identifier Pattern (CRITICAL)
+
+- **PatientDurableKey** = stable patient ID across all SCD Type 2 versions. Use this for ALL cohort queries.
+- **PatientKey** = SCD Type 2 surrogate key. Changes when demographics update. Fact tables stamp the key active at event time. Old PatientKeys have `IsCurrent=0` in PatientDim — using PatientKey to join to PatientDim with IsCurrent=1 matches only ~16% of patients.
+- **Always**: `WHERE PatientDurableKey IN (SELECT PatientDurableKey FROM fact_table ...)`
+- **Never**: `WHERE PatientKey IN (SELECT PatientKey FROM fact_table ...)`
+
+### Date Handling
+
+- Date columns (*DateKey) are YYYYMMDD integers (e.g., 20240115)
+- Convert to DATE: `CONVERT(DATE, CAST(DateKey AS VARCHAR(8)), 112)`
+- Filter invalid dates: `WHERE DateKey > 19000101`
+
+### CDW Performance Patterns (Critical)
+
+- **NEVER** join PatientDim directly to fact tables — causes timeouts (>120s)
+- Use `WHERE PatientDurableKey IN (SELECT PatientDurableKey FROM ...)` subquery pattern instead (<1s)
+- CTE + JOIN also times out — use nested subqueries
+- SQL Server syntax: `SELECT DISTINCT TOP N` (not `SELECT TOP N DISTINCT`)
+- All tables must be schema-qualified: `deid_uf.TableName`
+- Database has dual schemas (`deid` and `deid_uf`); `deid_uf` has all columns and note tables
+- Cross-schema joins timeout — stay within one schema
+- Multi-fact queries (diagnosis + medication): use 2-step approach — first get key values via concept tools, then use hardcoded `IN (...)` lists instead of nesting subqueries across fact tables

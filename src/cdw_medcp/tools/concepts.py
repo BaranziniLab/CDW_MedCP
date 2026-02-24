@@ -35,7 +35,7 @@ def _run_query(config: ClinicalDBConfig, sql: str) -> str:
     return "\n".join(csv_lines)
 
 
-def register_concept_tools(mcp: FastMCP, namespace_prefix: str, clinical_config: ClinicalDBConfig):
+def register_concept_tools(mcp: FastMCP, namespace_prefix: str, clinical_config: ClinicalDBConfig, schema: str = "deid_uf"):
     """Register concept mapping and relationship tools"""
 
     @mcp.tool(
@@ -58,8 +58,8 @@ def register_concept_tools(mcp: FastMCP, namespace_prefix: str, clinical_config:
         sql = (
             f"SELECT TOP {row_limit} dt.DiagnosisTerminologyKey, dt.DiagnosisKey, "
             f"dt.Type, dt.Value, dt.DisplayString, dd.Name AS DiagnosisName "
-            f"FROM DiagnosisTerminologyDim dt "
-            f"JOIN DiagnosisDim dd ON dt.DiagnosisKey = dd.DiagnosisKey "
+            f"FROM {schema}.DiagnosisTerminologyDim dt "
+            f"JOIN {schema}.DiagnosisDim dd ON dt.DiagnosisKey = dd.DiagnosisKey "
             f"WHERE dt.Value LIKE '%{search_term}%' OR dt.DisplayString LIKE '%{search_term}%' "
             f"OR dd.Name LIKE '%{search_term}%'"
         )
@@ -86,7 +86,7 @@ def register_concept_tools(mcp: FastMCP, namespace_prefix: str, clinical_config:
             f"SELECT TOP {row_limit} mc.MedicationCodeKey, mc.MedicationKey, "
             f"mc.Type, mc.Code, mc.MedicationName, mc.MedicationGenericName, "
             f"mc.MedicationTherapeuticClass "
-            f"FROM MedicationCodeDim mc "
+            f"FROM {schema}.MedicationCodeDim mc "
             f"WHERE mc.Code LIKE '%{search_term}%' OR mc.MedicationName LIKE '%{search_term}%' "
             f"OR mc.MedicationGenericName LIKE '%{search_term}%'"
         )
@@ -112,7 +112,7 @@ def register_concept_tools(mcp: FastMCP, namespace_prefix: str, clinical_config:
         sql = (
             f"SELECT TOP {row_limit} pt.ProcedureTerminologyKey, "
             f"pt.Code, pt.Name, pt.CodeSet "
-            f"FROM ProcedureTerminologyDim pt "
+            f"FROM {schema}.ProcedureTerminologyDim pt "
             f"WHERE pt.Code LIKE '%{search_term}%' OR pt.Name LIKE '%{search_term}%'"
         )
         result = _run_query(clinical_config, sql)
