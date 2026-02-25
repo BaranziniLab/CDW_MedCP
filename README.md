@@ -71,7 +71,7 @@ Built for clinical researchers who need natural-language access to EHR data with
 
 ## Guided Prompts
 
-The server includes three MCP prompts that guide Claude through common workflows:
+The server includes three MCP prompts that guide LLM-powered agents through common workflows:
 
 - **clinical_data_exploration** — Step-by-step CDW exploration: schema overview, table discovery, query building
 - **cohort_building** — Cohort identification workflow with correct patient identifier patterns and query optimization tips
@@ -132,9 +132,9 @@ All configuration is via environment variables (see `.env.example`):
 
 CDW_MedCP can be installed as a Claude Desktop extension via the MCPB bundle format. The `manifest.json` defines the tool interface and credential configuration with OS keychain storage for passwords.
 
-### Claude Code Integration
+### CLI Integration 
 
-Add to your Claude Code MCP configuration:
+Add to your MCP configuration:
 
 ```json
 {
