@@ -1,6 +1,6 @@
 # CDW_MedCP
 
-An MCP (Model Context Protocol) server that connects Claude Desktop and Claude Code to a de-identified **Epic Caboodle Clinical Data Warehouse** via SQL Server.
+An MCP (Model Context Protocol) server that connects LLMs (eg Claude Desktop or Claude Code) to a de-identified **Epic Caboodle Clinical Data Warehouse** via SQL Server.
 
 Built for clinical researchers who need natural-language access to EHR data without writing SQL. Based on the [MedCP](https://github.com/BaranziniLab/MedCP) architecture by the UCSF Baranzini Lab, with a modular tool registry, expanded clinical tools, and no knowledge graph dependency.
 
